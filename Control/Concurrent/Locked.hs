@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DataKinds #-}
@@ -14,8 +15,6 @@ import Control.Concurrent.MVar
 import Data.Constraint
 import Data.Proxy
 import Data.IORef
-
-data LockComp (s :: LockState) a = LC a
 
 data ProxyLock (l :: Symbol) = PL
 
@@ -53,14 +52,26 @@ type family NotPresent (s :: LockState) (l :: Symbol) :: Constraint where
 type family IsPresent (s :: LockState) (l :: Symbol) :: Constraint where
   IsPresent s l = Contains l (ListAllocated s) ~ 'True
 
-newLock :: NotPresent s l
-        => ProxyLock l
-        -> LockComp (Allocate s l) ()
-newLock = undefined
+data IxLocked :: LockState -> LockState -> * -> * where
+  
+  LReturn :: a -> IxLocked i i a
+  
+  LNewLock :: NotPresent s l
+           => ProxyLock l
+           -> IxLocked (Allocate s l) k a
+           -> IxLocked s k a
 
-getLock :: IsPresent s l
-        => ProxyLock l
-        -> LockComp (Acquire s l) ()
-getLock = undefined
+  LGetLock :: IsPresent s l
+           => ProxyLock l
+           -> IxLocked (Acquire s l) k a
+           -> IxLocked s k a
 
+class IxMonad (m :: LockState -> LockState -> * -> *) where
+  ibind :: m i j a -> (a -> m j k b)-> m i k b
+  ireturn :: a -> m i i a
 
+instance IxMonad IxLocked where
+  ireturn = LReturn
+  ibind (LReturn a) k = k a
+  ibind (LNewLock lock j) k = LNewLock lock (ibind j k)
+  ibind (LGetLock lock j) k = LGetLock lock (ibind j k)
