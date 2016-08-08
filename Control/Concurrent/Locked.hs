@@ -49,6 +49,9 @@ type family Acquire (s :: LockState) (l :: Symbol) :: LockState where
 type family NotPresent (s :: LockState) (l :: Symbol) :: Constraint where
   NotPresent s l = Absent l (ListAllocated s) ~ 'True
 
+type family NotHeld (s :: LockState) (l :: Symbol) :: Constraint where
+  NotHeld s l = Absent l (ListHeld s) ~ 'True
+
 type family IsPresent (s :: LockState) (l :: Symbol) :: Constraint where
   IsPresent s l = Contains l (ListAllocated s) ~ 'True
 
@@ -61,7 +64,7 @@ data IxLocked :: LockState -> LockState -> * -> * where
            -> IxLocked (Allocate s l) k a
            -> IxLocked s k a
 
-  LGetLock :: IsPresent s l
+  LGetLock :: (IsPresent s l, NotHeld s l)
            => ProxyLock l
            -> IxLocked (Acquire s l) k a
            -> IxLocked s k a
@@ -75,3 +78,4 @@ instance IxMonad IxLocked where
   ibind (LReturn a) k = k a
   ibind (LNewLock lock j) k = LNewLock lock (ibind j k)
   ibind (LGetLock lock j) k = LGetLock lock (ibind j k)
+
